@@ -575,3 +575,116 @@ WHERE
     AND RESERVAS.RES_CODIGO = RESERVASDECLIENTES.RES_CODIGO
     AND  RESERVAS.VUE_CODIGO = VUELOS.VUE_CODIGO
     AND VUELOS.DES_CODIGO = DESTINOS.DES_CODIGO;
+    
+    
+--Funciones creadas por gustavo 
+ 
+create or replace FUNCTION  FUN_GETCANTIDADVIAJES ( correo CLIENTES.CLI_EMAIL%TYPE)
+ RETURN NUMBER
+ IS 
+    cantidadDeViajes NUMBER(2):= 0;
+ BEGIN 
+
+    SELECT 
+        COUNT(*) INTO cantidadDeViajes
+    FROM 
+        CLIENTES,
+        RESERVASDECLIENTES,
+        RESERVAS,
+        VUELOS,
+        DESTINOS
+    WHERE 
+        CLIENTES.CLI_EMAIL = correo
+        AND CLIENTES.CLI_CEDULA = RESERVASDECLIENTES.CLI_CEDULA
+        AND RESERVAS.RES_CODIGO = RESERVASDECLIENTES.RES_CODIGO
+        AND  RESERVAS.VUE_CODIGO = VUELOS.VUE_CODIGO
+        AND VUELOS.DES_CODIGO = DESTINOS.DES_CODIGO; 
+    RETURN cantidadDeViajes;
+END;
+
+create or replace function FN_GET_VUELOS (AVI_ID AVIONES.AVI_CODIGO%type)
+RETURN  NUMBER
+IS
+    cantidadDeVuelos NUMBER(2):= 0;
+BEGIN
+  SELECT 
+        COUNT(*) INTO cantidadDeVuelos
+        From VUELOS
+        WHERE VUELOS.AVI_CODIGO=AVI_ID and VUELOS.;
+    
+        return cantidadDeVuelos;
+END;
+
+CREATE OR REPLACE FUNCTION FN_GETEMAIL_BY_CLIENT_ID (client_id CLIENTES.CLI_CEDULA%TYPE)
+RETURN VARCHAR2
+IS
+    user_email VARCHAR2(80);
+Begin
+    Select
+        CLIENTES.CLI_EMAIL INTO user_email
+    From CLIENTES 
+    WHERE CLIENTES.CLI_CEDULA=client_id;
+    return user_email;
+END;
+--procedimientos creados por Gustavo
+CREATE or REPLACE PROCEDURE proc_mail_message(
+   to_mail CLIENTES.CLI_EMAIL%type,
+   subject varchar2,message varchar2) 
+IS
+BEGIN
+        dbms_output.put_line('Enviando mensaje');
+        dbms_output.put_line('Hola' || to_mail || subject || message);
+        
+END;
+
+--triggers creados por Gustavo
+
+CREATE OR REPLACE TRIGGER tg_give_promotion after insert on RESERVASDECLIENTES for EACH ROW
+declare
+email VARCHAR2(80);
+numReserves NUMBER(2);
+BEGIN
+    email:= FN_GETEMAIL_BY_CLIENT_ID(:New.RECLI_CODIGO);
+    numReserves:=FUN_GETCANTIDADVIAJES(email);
+    IF numReserves >10 then
+         dbms_output.put_line('El usuario' || :new.RECLI_CODIGO       || 'Ha ganado un 10% de descuento por ser un cliente frecuente');
+    END IF;
+END;
+
+create or replace trigger tg_notify_new_airplane after insert on AVIONES  for each row
+declare 
+ CURSOR C_CLIENTES IS SELECT * FROM CLIENTES;
+    row_cliente C_CLIENTES%ROWTYPE;
+BEGIN
+ OPEN C_CLIENTES;
+    FETCH C_CLIENTES INTO row_cliente;
+    WHILE C_CLIENTES%FOUND LOOP
+        proc_mail_message(row_cliente.CLI_EMAIL,:NEW.AVI_MARCA,'Hemos adquirido un nuevo avión para nuestra aerolinea,VEN A DISFRUTAR!!');
+        FETCH C_CLIENTES INTO row_cliente;
+    END LOOP; 
+    CLOSE C_CLIENTES;
+END;
+
+
+CREATE OR REPLACE TRIGGER TG_WELCOME_MESSAGE AFTER INSERT ON CLIENTES FOR EACH ROW
+BEGIN
+       proc_mail_message(:NEW.CLI_EMAIL,'Gracias por ayudarnos a crecer','Bienvenido a tu aerolinea GRACIAS POR USAR NUESTROS SERVICIOS!!');
+END;
+
+
+CREATE OR REPLACE TRIGGER TG_SHOULDNOT_ADD_AIRPLANEBAD BEFORE INSERT ON AVIONES FOR EACH ROW
+BEGIN
+    IF :NEW.AVI_ESTADO=1 THEN 
+        RAISE_APPLICATION_ERROR(-20010, 'Según las politicas de la empresa no se permiten añadir aviones en mal estado a la flota');
+    END IF;
+END;
+
+create or replace trigger TG_ONDELETE_RESERVAS BEFORE DELETE ON RESERVAS FOR EACH ROW
+begin
+    if :OLD.STATES_ESTADODERESERVA='ES02' THEN
+       RAISE_APPLICATION_ERROR(-20010, 'No se puede eliminar una reserva en espera');
+    END IF;
+end;
+
+
+    
